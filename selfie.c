@@ -1358,6 +1358,15 @@ void implement_create_array(uint64_t *context);
 void emit_insert_array();
 void implement_insert_array(uint64_t*context);
 
+void emit_critical_section_counter();
+void implement_critical_section_counter(uint64_t*context);
+
+void emit_increment_critical_section_counter();
+void implement_increment_critical_section_counter(uint64_t *context);
+
+void emit_get_critical_section_counter();
+void implement_get_critical_section_counter(uint64_t*context);
+
 uint64_t is_boot_level_zero();
 
 // ------------------------ GLOBAL CONSTANTS -----------------------
@@ -1391,7 +1400,9 @@ uint64_t SYSCALL_REQUEST_BANKERS = 36;
 uint64_t SYSCALL_RELEASE_BANKERS = 37;
 uint64_t SYSCALL_CREATE_ARRAY = 38;
 uint64_t SYSCALL_INSERT_ARRAY = 39;
-
+uint64_t SYSCALL_CRITICAL_SECTION_COUNTER = 40;
+uint64_t SYSCALL_INCREMENT_CRITICAL_SECTION_COUNTER = 41;
+uint64_t SYSCALL_GET_CRITICAL_SECTION_COUNTER = 42;
 
 /* DIRFD_AT_FDCWD corresponds to AT_FDCWD in fcntl.h and
 	 is passed as first argument of the openat system call
@@ -7318,6 +7329,9 @@ void selfie_compile()
 	emit_release_bankers();
 	emit_create_array();
 	emit_insert_array();
+	emit_critical_section_counter();
+	emit_increment_critical_section_counter();
+	emit_get_critical_section_counter();
 
   if (GC_ON)
   {
@@ -9518,30 +9532,6 @@ void emit_create_bankers(){
 	emit_jalr(REG_ZR,REG_RA,0);
 }
 
-/*
-void implement_create_bankers(uint64_t*context){
-	uint64_t rows = *(get_regs(context)+REG_A0);
-	uint64_t cols = *(get_regs(context)+REG_A1);
-	uint64_t *resources = (uint64_t*)*(get_regs(context)+REG_A2);
-	uint64_t **matriz = (uint64_t **) smalloc(rows * sizeof(uint64_t));
-	uint64_t i = 0;
-
-	while(i<rows){
-		*(matriz+i) = smalloc(cols * sizeof(uint64_t));
-		i = i + 1;
-	}
-	
-	uint64_t *bankers = smalloc(2 * sizeof(uint64_t));
-	set_bankers_mx(bankers,matriz);
-	set_bankers_rows(bankers,rows);
-	set_bankers_cols(bankers,cols);
-	set_bankers_res(bankers,resources);
-
-	*(get_regs(context)+REG_A0) = (uint64_t)bankers;
-  set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
-}
-*/
-
 void implement_create_bankers(uint64_t* context) {
 	uint64_t rows = *(get_regs(context) + REG_A0);
 	uint64_t cols = *(get_regs(context) + REG_A1);
@@ -9717,6 +9707,65 @@ void implement_insert_array(uint64_t*context){
 	uint64_t value = *(get_regs(context)+REG_A2);
 	*(array+index) = value;
 
+	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+}
+
+
+void emit_critical_section_counter(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("critical_section_counter"),0,PROCEDURE,UINT64_T,1,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_CRITICAL_SECTION_COUNTER);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_critical_section_counter(uint64_t *context){
+
+	uint64_t a_size = *(get_regs(context)+REG_A0);
+	uint64_t *array = zmalloc(a_size * sizeof(uint64_t));
+	*(get_regs(context)+REG_A0) = (uint64_t)array;
+	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+
+}
+
+void emit_increment_critical_section_counter(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("increment_critical_section_counter"),0,PROCEDURE,UINT64_T,2,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_load(REG_A1,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_INCREMENT_CRITICAL_SECTION_COUNTER);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_increment_critical_section_counter(uint64_t *context){
+	
+	uint64_t *array = (uint64_t *)*(get_regs(context)+REG_A0);
+	uint64_t id = *(get_regs(context)+REG_A1);
+
+	*(array + id ) += 1;
+	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+
+}
+
+void emit_get_critical_section_counter(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("get_critical_section_counter"),0,PROCEDURE,UINT64_T,2,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_load(REG_A1,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_GET_CRITICAL_SECTION_COUNTER);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_get_critical_section_counter(uint64_t *context){
+	uint64_t *array = (uint64_t *)*(get_regs(context)+REG_A0);
+	uint64_t size = *(get_regs(context)+REG_A1);
+	printf("critical section counter  id = %ld\n",get_pid(context));
+	print_matrix(array,1,size);
 	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
 }
 
@@ -11954,6 +12003,15 @@ void do_ecall()
 		else if (*(registers+REG_A7) == SYSCALL_SEMAPHORE_WAIT){write_register(REG_A0);}
 		else if (*(registers+REG_A7) == SYSCALL_SEMAPHORE_POS){write_register(REG_A0);}
 		else if (*(registers+REG_A7) == SYSCALL_GETTHREADID){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_CRITICAL_SECTION_COUNTER){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_INCREMENT_CRITICAL_SECTION_COUNTER){
+				read_register(REG_A1);
+				write_register(REG_A0);
+			}
+		else if (*(registers+REG_A7) == SYSCALL_GET_CRITICAL_SECTION_COUNTER){
+				read_register(REG_A1);
+				write_register(REG_A0);
+			}
 		else if (*(registers+REG_A7) == SYSCALL_CREATE_BANKERS){
 				read_register(REG_A1);
 				read_register(REG_A2);
@@ -14152,6 +14210,12 @@ uint64_t handle_system_call(uint64_t *context)
 		implement_create_array(context);
 	else if (a7 == SYSCALL_INSERT_ARRAY)
 		implement_insert_array(context);
+	else if (a7 == SYSCALL_CRITICAL_SECTION_COUNTER)
+		implement_critical_section_counter(context);
+	else if (a7 == SYSCALL_INCREMENT_CRITICAL_SECTION_COUNTER)
+		implement_increment_critical_section_counter(context);
+	else if (a7 == SYSCALL_GET_CRITICAL_SECTION_COUNTER)
+		implement_get_critical_section_counter(context);
 	else if (a7 == SYSCALL_EXIT)
   {	
 		uint64_t* parent = get_parent(context);

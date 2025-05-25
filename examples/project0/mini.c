@@ -12,6 +12,8 @@ uint64_t contador3;
 
 uint64_t contador_tmp;
 
+uint64_t *cs_counter;
+
 void test(){
 	if(get_pid() == 1){
 		while(contador1 < 10){
@@ -71,6 +73,9 @@ int main(){
 	fork();
 	if(get_pid() == 1){fork();}
 	
-	test();
+	cs_counter = critical_section_counter(1);
+	increment_critical_section_counter(cs_counter,0);
+	get_critical_section_counter(cs_counter,1);
+	//test();
 
 }
