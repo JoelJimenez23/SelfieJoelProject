@@ -1,0 +1,235 @@
+[joel@archlinux SelfieJoelProject]$ make
+cc -Wall -Wextra -g -D'uint64_t=unsigned long' selfie.c -o selfie
+[joel@archlinux SelfieJoelProject]$ ./selfie -c examples/project0/bankers.c -m 3
+./selfie: ================================================================================
+./selfie: this is the selfie system from selfie.cs.uni-salzburg.at with
+./selfie: 64-bit unsigned integers and 64-bit pointers hosted on Linux
+./selfie: ================================================================================
+./selfie: selfie compiling examples/project0/bankers.c to 64-bit RISC-U with 64-bit starc
+./selfie: warning in examples/project0/bankers.c in line 18: type mismatch, uint64_t* expected but uint64_t found
+./selfie: warning in examples/project0/bankers.c in line 26: type mismatch, uint64_t* expected but uint64_t found
+./selfie: warning in examples/project0/bankers.c in line 33: type mismatch, uint64_t* expected but uint64_t found
+./selfie: warning in examples/project0/bankers.c in line 40: type mismatch, uint64_t* expected but uint64_t found
+./selfie: warning in examples/project0/bankers.c in line 47: type mismatch, uint64_t* expected but uint64_t found
+./selfie: warning in examples/project0/bankers.c in line 62: type mismatch, uint64_t* expected but uint64_t found
+./selfie: warning in examples/project0/bankers.c in line 63: type mismatch, uint64_t* expected but uint64_t found
+./selfie: warning in examples/project0/bankers.c in line 64: type mismatch, uint64_t* expected but uint64_t found
+./selfie: warning in examples/project0/bankers.c in line 70: type mismatch, uint64_t* expected but uint64_t found
+./selfie: --------------------------------------------------------------------------------
+./selfie: 1671 characters read in 88 lines and 4 comments
+./selfie: with 1357(81.21%) characters in 473 actual symbols
+./selfie: 10 global variables, 2 procedures, 0 string literals
+./selfie: 10 assignments, 0 while, 13 if, 49 calls, 1 return
+./selfie: --------------------------------------------------------------------------------
+./selfie: 198 symbol table lookups in 0 iterations on average
+./selfie: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+./selfie: 2232 bytes generated with 536 instructions and 88 bytes of data
+./selfie: --------------------------------------------------------------------------------
+./selfie: profile: instruction: total(ratio%)
+./selfie: init:    lui: 1(0.18%), addi: 219(40.85%)
+./selfie: memory:  ld: 69(12.87%), sd: 101(18.84%)
+./selfie: compute: add: 1(0.18%), sub: 10(1.86%), mul: 0(0.00%)
+./selfie: compute: divu: 0(0.00%), remu: 2(0.37%)
+./selfie: compare: sltu: 8(1.49%)
+./selfie: control: beq: 17(3.17%), jal: 55(10.26%), jalr: 26(4.85%)
+./selfie: system:  ecall: 27(5.03%)
+./selfie: --------------------------------------------------------------------------------
+./selfie: profile: data: total(bytes)
+./selfie: global variables:       11(88)
+./selfie: unique string literals: 0(0)
+./selfie: unique big integers:    0(0)
+./selfie: ********************************************************************************
+======= CONTEXT INFO =======
+next_context        : addr = 0x5893018535c0, value = (nil)
+prev_context        : addr = 0x5893018535c8, value = (nil)
+program_counter     : addr = 0x5893018535d0, value = 0x10000
+registers           : addr = 0x5893018535d8
+  ├── zero : 0x0000000000000000
+  ├── ra   : 0x0000000000000000
+  ├── a0   : 0x0000000000000000
+  └── a7   : 0x0000000000000000
+  └── sp   : 0x00000000FFFFFFC0
+page_table          : addr = 0x5893018535e0, value = 0x589301853850
+lowest_lo_page      : addr = 0x5893018535e8, value = 0x10
+highest_lo_page     : addr = 0x5893018535f0, value = 0x12
+lowest_hi_page      : addr = 0x5893018535f8, value = 0xFFFFF
+highest_hi_page     : addr = 0x589301853600, value = 0x100000
+code_start          : addr = 0x589301853608, value = 0x10000
+code_size           : addr = 0x589301853610, value = 0x860
+data_start          : addr = 0x589301853618, value = 0x11000
+data_size           : addr = 0x589301853620, value = 88
+heap_start          : addr = 0x589301853628, value = 0x12000
+program_break       : addr = 0x589301853630, value = 0x12000
+exception           : addr = 0x589301853638, value = 0
+faulting_page       : addr = 0x589301853640, value = 0x0
+exit_code           : addr = 0x589301853648, value = 0
+parent              : addr = 0x589301853650, value = (nil)
+virtual_context     : addr = 0x589301853658, value = (nil)
+name                : addr = 0x589301853660, value = > examples/project0/bankers.c
+instr_counter       : addr = 0x589301853668, value = 0
+malloc_counter      : addr = 0x589301853670, value = 0
+syscall_counter     : addr = 0x589301853678, value = 0
+page_fault_counter  : addr = 0x589301853680, value = 0
+timer_interrupts    : addr = 0x589301853688, value = 0
+peak_stack_size     : addr = 0x589301853690, value = 4294967288
+mapped_heap         : addr = 0x589301853698, value = 0
+used_list_head      : addr = 0x5893018536a0, value = |->  [0x5893018535c0] <--> NULL
+free_list_head      : addr = 0x5893018536a8, value = |->NULL
+gcs_counter         : addr = 0x5893018536b0, value = 0
+gc_enabled          : addr = 0x5893018536b8, value = 0
+pid                 : addr = 0x5893018536c0, value = 1
+children_list_head  : addr = 0x5893018536c8, value = |->NULL
+n_children          : addr = 0x5893018536d0, value = 0
+child exception     : addr = 0x5893018536d8, value = 0
+next_sibling        : addr = 0x5893018536e0, value = (nil)
+prev_sibling        : addr = 0x5893018536e8, value = (nil)
+state 		    : addr = 0x5893018536f0, value = 1
+thread_id    	    : addr = 0x5893018536f8, value = 0
+next_thread        : addr = 0x589301853700, value = (nil)
+prev_thread        : addr = 0x589301853708, value = (nil)
+joined 						 : addr = 0x589301853710, value = 0
+main_thread        : addr = 0x589301853718, value = (nil)
+============================
+./selfie: 64-bit mipster executing 64-bit RISC-U binary examples/project0/bankers.c with 3MB physical memory
+./selfie: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+==========================
+proceso 1
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 1 , 1 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+resources
+[ 1 , 1 , 1 , 1 , 1 ]
+need
+[ 0 , 1 , 1 , 0 , 0 ]
+safe 1
+===========================
+1 released
+==========================
+proceso 2
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 1 , 1 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+resources
+[ 1 , 1 , 1 , 1 , 1 ]
+need
+[ 0 , 0 , 1 , 1 , 0 ]
+safe 1
+===========================
+2 released
+==========================
+proceso 3
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 1 , 1 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+resources
+[ 1 , 1 , 1 , 1 , 1 ]
+need
+[ 0 , 0 , 0 , 1 , 1 ]
+safe 1
+===========================
+3 released
+==========================
+proceso 4
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 1 , 0 , 0 , 0 , 1 ]
+resources
+[ 1 , 1 , 1 , 1 , 1 ]
+need
+[ 1 , 0 , 0 , 0 , 1 ]
+safe 1
+===========================
+==========================
+proceso 0
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 1 , 0 , 0 , 0 , 1 ]
+
+[ 1 , 1 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 0 , 0 , 0 , 0 , 0 ]
+[ 1 , 0 , 0 , 0 , 1 ]
+resources
+[ 1 , 1 , 1 , 1 , 1 ]
+need
+[ 2 , 1 , 0 , 0 , 1 ]
+safe 0
+===========================
+4 released
+
+./selfie: <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+./selfie: 64-bit mipster terminating 64-bit RISC-U binary examples/project0/bankers.c with exit code 24
+./selfie: --------------------------------------------------------------------------------
+./selfie: summary: 1038 executed instructions in total [12.90% nops]
+./selfie:          0.10MB mapped memory [3.38% of 3MB physical memory]
+./selfie: --------------------------------------------------------------------------------
+./selfie: profile: instruction: total(ratio%)[nops%]
+./selfie: init:    lui: 1(0.09%)[0.00%], addi: 437(42.10%)[13.50%]
+./selfie: memory:  ld: 154(14.83%)[26.62%], sd: 118(11.36%)[18.64%]
+./selfie: compute: add: 0(0.00%)[0.00%], sub: 25(2.40%)[0.00%], mul: 0(0.00%)[0.00%]
+./selfie: compute: divu: 0(0.00%)[0.00%], remu: 1(0.09%)[0.00%]
+./selfie: compare: sltu: 24(2.31%)[0.00%]
+./selfie: control: beq: 29(2.79%)[41.38%], jal: 86(8.28%)[0.00%], jalr: 85(8.18%)[0.00%]
+./selfie: system:  ecall: 78(7.51%)
+./selfie: --------------------------------------------------------------------------------
+./selfie: profile: total,max(ratio%)@address(line#),2ndmax,3rdmax
+./selfie: calls:   77,24(31.16%)@0x1DC(~1),15(19.48%)@0x2B0(~1),6(7.79%)@0x29C(~1)
+./selfie: loops:   0,0(0.00%),0(0.00%),0(0.00%)
+./selfie: loads:   154,15(9.74%)@0x2B0(~1),15(9.74%)@0x2B8(~1),15(9.74%)@0x2C0(~1)
+./selfie: stores:  118,5(4.23%)@0x50(~1),5(4.23%)@0x2D8(~15),5(4.23%)@0x2E0(~15)
+./selfie: --------------------------------------------------------------------------------
+./selfie: CPU+memory:    reads+writes,reads,writes[reads/writes]
+./selfie: gp register:   52,51,1[51.00]
+./selfie: data segment:  51,40,11[3.63]
+./selfie: ra register:   178,91,87[1.04]
+./selfie: sp register:   575,401,174[2.30]
+./selfie: s0 register:   23,6,17[0.35]
+./selfie: stack total:   776,498,278[1.79]
+./selfie: stack segment: 221,114,107[1.06]
+./selfie: a0 register:   287,125,162[0.77]
+./selfie: a1 register:   45,20,25[0.80]
+./selfie: a2 register:   37,16,21[0.76]
+./selfie: a6 register:   79,0,79[0.00]
+./selfie: a7 register:   156,78,78[1.00]
+./selfie: args total:    604,239,365[0.65]
+./selfie: t0 register:   372,186,186[1.00]
+./selfie: t1 register:   96,48,48[1.00]
+./selfie: temps total:   468,234,234[1.00]
+./selfie: ################################################################################
+[joel@archlinux SelfieJoelProject]$

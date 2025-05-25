@@ -1319,6 +1319,9 @@ void implement_cas(uint64_t *context);
 void emit_thread_join();
 void implement_thread_join(uint64_t *context);
 
+void emit_create_lock();
+void implement_create_lock(uint64_t *context);
+
 void emit_lock();
 void implement_lock(uint64_t * context);
 
@@ -1327,6 +1330,33 @@ void implement_unlock(uint64_t * context);
 
 void emit_getpid();
 void implement_getpid(uint64_t * context);
+
+void emit_create_semaphore();
+void implement_create_semaphore(uint64_t * context);
+
+void emit_semaphore_wait();
+void implement_semaphore_wait(uint64_t *context);
+
+void emit_semaphore_pos();
+void implement_semaphore_pos(uint64_t *context);
+
+void emit_get_thread_id();
+void implement_get_thread_id(uint64_t*context);
+
+void emit_create_bankers();
+void implement_create_bankers(uint64_t*context);
+
+void emit_request_bankers();
+void implement_request_bankers(uint64_t*context);
+
+void emit_release_bankers();
+void implement_release_bankers(uint64_t*context);
+
+void emit_create_array();
+void implement_create_array(uint64_t *context);
+
+void emit_insert_array();
+void implement_insert_array(uint64_t*context);
 
 uint64_t is_boot_level_zero();
 
@@ -1351,6 +1381,16 @@ uint64_t SYSCALL_THREAD_JOIN = 26;
 uint64_t SYSCALL_LOCK = 27;
 uint64_t SYSCALL_UNLOCK = 28;
 uint64_t SYSCALL_GETPID = 29;	
+uint64_t SYSCALL_CREATE_SEMAPHORE = 30;
+uint64_t SYSCALL_SEMAPHORE_WAIT = 31;
+uint64_t SYSCALL_SEMAPHORE_POS = 32;
+uint64_t SYSCALL_GETTHREADID = 33;
+uint64_t SYSCALL_CREATE_LOCK = 34;
+uint64_t SYSCALL_CREATE_BANKERS = 35;
+uint64_t SYSCALL_REQUEST_BANKERS = 36;
+uint64_t SYSCALL_RELEASE_BANKERS = 37;
+uint64_t SYSCALL_CREATE_ARRAY = 38;
+uint64_t SYSCALL_INSERT_ARRAY = 39;
 
 
 /* DIRFD_AT_FDCWD corresponds to AT_FDCWD in fcntl.h and
@@ -2269,7 +2309,7 @@ uint64_t *delete_context(uint64_t *context, uint64_t *from);
 // +----+-----------------+
 // | 21 | instr. counter  | number of executed instructions
 // | 22 | malloc counter  | number of executed mallocs
-// | 23 | syscall counter | number of handled syscalls
+//| 23 | syscall counter | number of handled syscalls
 // | 24 | page fault ctr  | number of handled page faults
 // | 25 | timer interrupt | number of handled timer interrupts
 // | 26 | peak stack size | peak stack size
@@ -2295,17 +2335,18 @@ uint64_t *delete_context(uint64_t *context, uint64_t *from);
 // | 43 | main_thread     | main thread pointer 
 // | 44 | n_threads				| number of threads
 // +----+-----------------+
+// | 45 | lock 						| if its locked this stores the lock ptr
 
 // number of entries of a machine context:
 // 14 uint64_t + 6 uint64_t* + 1 char* + 7 uint64_t + 2 uint64_t* + 2 uint64_t entries
 // extended in the symbolic execution engine and the Boehm garbage collector
-uint64_t CONTEXTENTRIES = 45;
+uint64_t CONTEXTENTRIES = 46;
 
 uint64_t pid_initializer = 1;
 
 uint64_t READY = 1;
 uint64_t BLOCKED = 0;
-
+uint64_t WAIT = 2;
 
 uint64_t *allocate_context(); // declaration avoids warning in the Boehm garbage collector
 
@@ -2363,6 +2404,8 @@ uint64_t joined(uint64_t *context) { return (uint64_t)(context+42); }
 uint64_t main_thread(uint64_t *context){return (uint64_t)context+43;}
 uint64_t n_threads(uint64_t *context){return (uint64_t)context+44;}
 
+uint64_t lock(uint64_t*context){ return (uint64_t)context+45;}
+
 uint64_t *get_next_context(uint64_t *context) { return (uint64_t *)*context; }
 uint64_t *get_prev_context(uint64_t *context) { return (uint64_t *)*(context + 1); }
 uint64_t get_pc(uint64_t *context) { return *(context + 2); }
@@ -2414,6 +2457,8 @@ uint64_t get_joined(uint64_t* context) { return (uint64_t)*(context+42); }
 uint64_t *get_main_thread(uint64_t * context) { return (uint64_t*)*(context+43); }
 uint64_t get_n_threads(uint64_t * context){ return (uint64_t)*(context+44); }
 
+uint64_t *get_lock(uint64_t *context){ return (uint64_t*)*(context+45); }
+
 void set_next_context(uint64_t *context, uint64_t *next) { *context = (uint64_t)next; }
 void set_prev_context(uint64_t *context, uint64_t *prev) { *(context + 1) = (uint64_t)prev; }
 void set_pc(uint64_t *context, uint64_t pc) { *(context + 2) = pc; }
@@ -2463,11 +2508,13 @@ void set_joined(uint64_t *context, uint64_t join) { *(context+42) = (uint64_t)jo
 void set_main_thread(uint64_t * context, uint64_t * main_thread_context){ *(context+43) = (uint64_t)main_thread_context;}
 void set_n_threads(uint64_t *context,uint64_t n_threads){*(context+44) = n_threads;}
 
+void set_lock(uint64_t *context,uint64_t *lock){ *(context+45) = (uint64_t)lock; }
+
 void iterate_free_contexts();
 void iterate_used_contexts();
 void iterate_children_contexs(uint64_t * context);
 
-uint64_t debug_context = 0;
+uint64_t debug_context = 1;
 
 
 void print_context(uint64_t *context) {
@@ -2570,7 +2617,54 @@ void print_context(uint64_t *context) {
 	}
 }
 
+// lock structure
+// +---+------------------+
+// | 0 | context_owner_ref|
+// +---+------------------+
 
+uint64_t *get_lock_owner(uint64_t *lock){ return (uint64_t*)*lock; }
+void set_lock_owner(uint64_t *lock,uint64_t* owner_ref){ *(lock) = (uint64_t)owner_ref;}
+
+// semaphore structure
+// +---+-------+
+// | 0 | count |
+// | 1 | queue |
+// +---+-------+
+// queue node structure
+// +---+------+
+// | 0 | ptr  |
+// | 1 | next |
+// +---+------+
+
+uint64_t get_semaphore_count(uint64_t *semaphore) { return (uint64_t)*semaphore;}
+uint64_t *get_semaphore_queue(uint64_t *semaphore) { return (uint64_t*)*(semaphore + 1); }
+
+void set_semaphore_count(uint64_t *semaphore, uint64_t count) { *(semaphore) = count; }
+void set_semaphore_queue(uint64_t *semaphore, uint64_t *queue) { *(semaphore+1) = (uint64_t)queue;}
+
+uint64_t *get_queue_node_ptr(uint64_t *qnode){ return (uint64_t*)*qnode;}
+uint64_t *get_queue_node_next(uint64_t *qnode){ return (uint64_t*)*(qnode+1); }
+
+void set_queue_node_ptr(uint64_t * qnode, uint64_t *ptr){ *(qnode) = (uint64_t)ptr; }
+void set_queue_node_next(uint64_t * qnode, uint64_t *next){ *(qnode+1) = (uint64_t)next; }
+
+// bankers structure
+// +---+------------+
+// | 0 | matrix  	  | // current resources 
+// | 1 | rows 			|
+// | 2 | cols 			|
+// | 3 | rsrc_vec   | // resource_vector
+// +---+------------+
+
+uint64_t *get_bankers_mx(uint64_t *bankers) { return (uint64_t *)*(bankers); }
+uint64_t get_bankers_rows(uint64_t *bankers) { return (uint64_t)*(bankers+1); }
+uint64_t get_bankers_cols(uint64_t *bankers) { return (uint64_t)*(bankers+2); }
+uint64_t *get_bankers_res(uint64_t *bankers) { return (uint64_t *)*(bankers+3); }
+
+void set_bankers_mx(uint64_t *bankers,uint64_t *mx) { *(bankers) = (uint64_t)mx; }
+void set_bankers_rows(uint64_t *bankers,uint64_t rows) { *(bankers+1) = (uint64_t)rows; }
+void set_bankers_cols(uint64_t *bankers,uint64_t cols) { *(bankers+2) = (uint64_t)cols; }
+void set_bankers_res(uint64_t *bankers,uint64_t *vec) { *(bankers+3) = (uint64_t)vec;}
 
 // -----------------------------------------------------------------
 // -------------------------- MICROKERNEL --------------------------
@@ -2581,7 +2675,7 @@ void reset_microkernel();
 uint64_t *create_context(uint64_t *parent, uint64_t *vctxt);
 uint64_t *cache_context(uint64_t *vctxt);
 
-void fork_context(uint64_t * context, uint64_t * new_context);
+void fork_context(uint64_t * context, uint64_t * child);
 void thread_context(uint64_t * context, uint64_t * new_context);
 void save_context(uint64_t *context);
 
@@ -2744,6 +2838,19 @@ void iterate_thread_contexs(uint64_t * context){
 	printf("NULL\n");
 }
 
+void iterate_waiting_contexs(){
+	uint64_t *current = waiting_lock_contexts;
+
+	printf("|->");
+
+	while (current != (uint64_t *)0) {
+		printf("  [%p] <--> ", current);
+		current = (uint64_t *)current[0]; // next is at offset 0
+	}
+
+	printf("NULL\n");
+}
+
 
 
 // ------------------------- INITIALIZATION ------------------------
@@ -2801,7 +2908,7 @@ uint64_t selfie_run(uint64_t machine);
 // ------------------------ GLOBAL CONSTANTS -----------------------
 
 uint64_t *MY_CONTEXT = (uint64_t *)0;
-uint64_t LOCK_UNOWNED = (uint64_t)-1;
+uint64_t *LOCK_UNOWNED = (uint64_t *)0;
 
 uint64_t DONOTEXIT = 0;
 uint64_t EXIT = 1; // extended in symbolic execution engine
@@ -7191,27 +7298,27 @@ void selfie_compile()
   emit_open();
 
   emit_malloc();
-
   emit_switch();
-	
 	emit_fork();
-
 	emit_wait();
-
 	emit_thread();
-
 	emit_ts();
-
 	emit_cas();
-
 	emit_thread_join();
-
+	emit_create_lock();
 	emit_lock();
-	
 	emit_unlock();
-
 	emit_getpid();
-		
+	emit_create_semaphore();
+	emit_semaphore_wait();
+	emit_semaphore_pos();
+	emit_get_thread_id();
+	emit_create_bankers();
+	emit_request_bankers();
+	emit_release_bankers();
+	emit_create_array();
+	emit_insert_array();
+
   if (GC_ON)
   {
     emit_fetch_stack_pointer();
@@ -9130,6 +9237,8 @@ void implement_thread(uint64_t * context){
 
 		*(get_regs(thread)+REG_A0) = get_thread_id(thread);
 		set_pc(thread,get_pc(thread)+INSTRUCTIONSIZE);
+
+
 	}
 	
 	*(get_regs(context)+REG_A0) = get_thread_id(context);
@@ -9195,64 +9304,86 @@ void implement_thread_join(uint64_t *context){
 	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
 }
 
+void emit_create_lock(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("lock_init"),0,PROCEDURE,UINT64_T,0,code_size);
+	emit_addi(REG_A0,REG_ZR,0);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_CREATE_LOCK);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_create_lock(uint64_t* context){
+	uint64_t *lock = smalloc(sizeof(uint64_t));
+	set_lock_owner(lock,LOCK_UNOWNED);
+	
+	*(get_regs(context)+REG_A0) = (uint64_t)lock;
+	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+}
 
 void emit_lock(){
-	create_symbol_table_entry(GLOBAL_TABLE,string_copy("lock"),0,PROCEDURE,UINT64_T,0,code_size);
-	emit_addi(REG_A0,REG_ZR,0);
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("lock"),0,PROCEDURE,UINT64_T,1,code_size);
+ 	emit_load(REG_A0,REG_SP,0);	
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
 	emit_addi(REG_A7,REG_ZR,SYSCALL_LOCK);
 	emit_ecall();
 	emit_jalr(REG_ZR,REG_RA,0);
 }
 
+
 void implement_lock(uint64_t *context){
-	uint64_t context_id = get_pid(context);
+	uint64_t *lock = (uint64_t*)*(get_regs(context)+REG_A0);
 
-	if(lock_owner == LOCK_UNOWNED){
-		lock_owner = context_id;
-		if(get_next_context(context) == (uint64_t *)0 && get_prev_context(context) != (uint64_t *)0){
-			while(get_prev_context(context)){
-				wait_context(get_prev_context(context));
-			}
-		}
-		else if(get_next_context(context) != (uint64_t *)0 && get_prev_context(context) != (uint64_t *)0){
-			while(get_prev_context(context)){
-				wait_context(get_prev_context(context));
-			}
-			while(get_next_context(context)){
-				wait_context(get_next_context(context));
-			}
-		}
-		else if(get_next_context(context) != (uint64_t *)0 && get_prev_context(context) == (uint64_t *)0){
-			while(get_next_context(context)){
-				wait_context(get_next_context(context));
-			}
-		}
 
-		set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
-	} 
+
+	if(get_lock_owner(lock) == LOCK_UNOWNED){
+		set_lock_owner(lock,context);
+		set_pc(context,get_pc(context)+INSTRUCTIONSIZE);	
+  	*(get_regs(context)+REG_A0) = 1;
 	
+	} else {
+		//modificar el estado a todos al wait
+		set_lock(context,lock);
+		wait_context(context);
+		set_state(context,WAIT);
 
-		//set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+	}
 }
 
+
 void emit_unlock(){
-	create_symbol_table_entry(GLOBAL_TABLE,string_copy("unlock"),0,PROCEDURE,UINT64_T,0,code_size);
-	emit_addi(REG_A0,REG_ZR,0);
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("unlock"),0,PROCEDURE,UINT64_T,1,code_size);
+	emit_load(REG_A0,REG_SP,0);	
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
 	emit_addi(REG_A7,REG_ZR,SYSCALL_UNLOCK);
 	emit_ecall();
 	emit_jalr(REG_ZR,REG_RA,0);
 }
 
+
 void implement_unlock(uint64_t *context){
-	uint64_t context_id = get_pid(context);
-	if(lock_owner == context_id){
-		while(waiting_lock_contexts != (uint64_t *)0){
-			use_context(waiting_lock_contexts);
+	uint64_t *lock = (uint64_t*)*(get_regs(context)+REG_A0);
+	if(get_lock_owner(lock) == context){
+		uint64_t* tmp = waiting_lock_contexts; //waiting_lock_contexts head
+		while(tmp != (uint64_t *)0){
+			if(get_lock(tmp) == lock){
+				uint64_t* tmp2 = tmp;
+				use_context(tmp2);
+				set_state(tmp2,READY);
+				set_lock(tmp2,LOCK_UNOWNED);
+			}
+			tmp = get_next_context(tmp);
 		}
-		lock_owner = LOCK_UNOWNED;
+		set_lock_owner(lock,LOCK_UNOWNED);
+  	*(get_regs(context)+REG_A0) = 1;
 	}
+	else {  
+  	*(get_regs(context)+REG_A0) = 0;
+	}	
+
 	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+
 }
+
 
 void emit_getpid(){
 	create_symbol_table_entry(GLOBAL_TABLE,string_copy("get_pid"),0,PROCEDURE,UINT64_T,0,code_size);
@@ -9265,6 +9396,327 @@ void emit_getpid(){
 void implement_getpid(uint64_t *context){
 	uint64_t context_id = get_pid(context);
 	*(get_regs(context)+REG_A0) = context_id;
+	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+}
+
+void emit_create_semaphore(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("sem_init"),0,PROCEDURE,UINT64_T,1,code_size);
+
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_CREATE_SEMAPHORE);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_create_semaphore(uint64_t *context){
+
+    uint64_t sem_count = *(get_regs(context)+REG_A0);
+
+    uint64_t *sem = smalloc(2 * sizeof(uint64_t));
+		uint64_t *queue = (uint64_t *)0;
+	
+		set_semaphore_count(sem,sem_count);
+		set_semaphore_queue(sem,queue);
+
+    *(get_regs(context)+REG_A0) = (uint64_t)sem;
+    set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
+
+}
+
+void emit_semaphore_wait(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("sem_wait"),0,PROCEDURE,UINT64_T,1,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_SEMAPHORE_WAIT);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_semaphore_wait(uint64_t *context){
+	uint64_t * sem = (uint64_t*)*(get_regs(context)+REG_A0);
+	uint64_t count = get_semaphore_count(sem);
+	
+
+	if(count > 0){
+		set_semaphore_count(sem,count-1);
+	}
+	else{
+		uint64_t * new_qnode = smalloc(2*sizeof(uint64_t));
+		if(get_semaphore_queue(sem) == (uint64_t *)0){
+			set_queue_node_ptr(new_qnode,context); //node ptr = context
+			set_queue_node_next(new_qnode,(uint64_t *)0); //node next= null
+			set_semaphore_queue(sem,new_qnode); //queue head = node
+			
+		} else {
+			uint64_t * tmp = get_semaphore_queue(sem);
+			while(get_queue_node_next(tmp) != (uint64_t*)0){
+				tmp = get_queue_node_next(tmp);
+			}
+			set_queue_node_ptr(new_qnode,context);
+			set_queue_node_next(new_qnode,(uint64_t *)0);
+			set_queue_node_next(tmp,new_qnode);	
+		}
+		wait_context(context);
+		set_state(context,WAIT);
+	}
+
+
+  *(get_regs(context)+REG_A0) = (uint64_t)sem;
+  set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
+
+}
+
+void emit_semaphore_pos(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("sem_pos"),0,PROCEDURE,UINT64_T,1,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_SEMAPHORE_POS);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_semaphore_pos(uint64_t *context){
+	uint64_t * sem = (uint64_t*)*(get_regs(context)+REG_A0);
+	uint64_t sem_count = get_semaphore_count(sem);
+	set_semaphore_count(sem,sem_count+1);
+	uint64_t *queue_head = get_semaphore_queue(sem); 
+	if(get_semaphore_queue(sem)){
+		uint64_t *waking_context = get_queue_node_ptr(queue_head);
+		set_semaphore_queue(sem,get_queue_node_next(queue_head));
+		use_context(waking_context);
+		set_state(waking_context,READY);
+	
+	}
+  set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
+}
+
+void emit_get_thread_id(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("thread_id"),0,PROCEDURE,UINT64_T,0,code_size);
+	emit_addi(REG_A0,REG_ZR,0);	
+	emit_addi(REG_A7,REG_ZR,SYSCALL_GETTHREADID);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_get_thread_id(uint64_t*context){
+  *(get_regs(context)+REG_A0) = get_thread_id(context);
+  set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
+}
+
+void emit_create_bankers(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("create_bankers"),0,PROCEDURE,UINT64_T,3,code_size);
+
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_load(REG_A1,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_load(REG_A2,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_CREATE_BANKERS);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+/*
+void implement_create_bankers(uint64_t*context){
+	uint64_t rows = *(get_regs(context)+REG_A0);
+	uint64_t cols = *(get_regs(context)+REG_A1);
+	uint64_t *resources = (uint64_t*)*(get_regs(context)+REG_A2);
+	uint64_t **matriz = (uint64_t **) smalloc(rows * sizeof(uint64_t));
+	uint64_t i = 0;
+
+	while(i<rows){
+		*(matriz+i) = smalloc(cols * sizeof(uint64_t));
+		i = i + 1;
+	}
+	
+	uint64_t *bankers = smalloc(2 * sizeof(uint64_t));
+	set_bankers_mx(bankers,matriz);
+	set_bankers_rows(bankers,rows);
+	set_bankers_cols(bankers,cols);
+	set_bankers_res(bankers,resources);
+
+	*(get_regs(context)+REG_A0) = (uint64_t)bankers;
+  set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
+}
+*/
+
+void implement_create_bankers(uint64_t* context) {
+	uint64_t rows = *(get_regs(context) + REG_A0);
+	uint64_t cols = *(get_regs(context) + REG_A1);
+	uint64_t* resources = (uint64_t*)*(get_regs(context) + REG_A2);
+
+	uint64_t* matriz = zmalloc(rows * cols * sizeof(uint64_t)); // matriz contigua
+
+	uint64_t* bankers = smalloc(5 * sizeof(uint64_t)); // espacio para punteros + dims
+	set_bankers_mx(bankers, matriz);
+	set_bankers_rows(bankers, rows);
+	set_bankers_cols(bankers, cols);
+	set_bankers_res(bankers, resources);
+
+	*(get_regs(context) + REG_A0) = (uint64_t)bankers;
+	set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
+}
+
+
+void emit_request_bankers(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("request_bankers"),0,PROCEDURE,UINT64_T,3,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_load(REG_A1,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_load(REG_A2,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_REQUEST_BANKERS);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void print_matrix(uint64_t* matriz, uint64_t rows, uint64_t cols) {
+	for (uint64_t i = 0; i < rows; i++) {
+		printf("[ ");
+		for (uint64_t j = 0; j < cols; j++) {
+			uint64_t value = matriz[i * cols + j];
+			printf("%ld", value);
+			if (j < cols - 1)
+				printf(" , ");
+		}
+		printf(" ]\n");
+	}
+}
+
+
+void implement_request_bankers(uint64_t*context){
+	uint64_t *bankers = (uint64_t*)*(get_regs(context)+REG_A0);
+	uint64_t id = *(get_regs(context)+REG_A1);
+	uint64_t *request = (uint64_t *)*(get_regs(context)+REG_A2);
+	uint64_t rows = get_bankers_rows(bankers);
+	uint64_t cols = get_bankers_cols(bankers);
+	uint64_t * matriz = get_bankers_mx(bankers);
+	uint64_t * need = smalloc(cols * sizeof(uint64_t));
+	uint64_t * resources = get_bankers_res(bankers);
+
+	uint64_t i=0,j=0;
+	printf("==========================\n");
+	printf("proceso %ld \n",id);
+	print_matrix(matriz,rows,cols);
+	//agregar los procesos solicitados para el proceso id
+	while (i < cols){ 
+		*(matriz + id*cols+i) = *(request+i);
+		i++;
+	}
+	printf("\n");
+	print_matrix(matriz,rows,cols);
+	//obtener el vector de recursos solicitados "need"		
+	i=0;
+	while(i<cols){
+		uint64_t suma = 0;
+		while(j<rows){
+			suma = suma + *(matriz + j*cols+i);
+			j++;
+		}
+		*(need+i) = suma;
+		suma = 0;
+		j = 0;
+		i++;
+	}
+	i=0;
+
+	printf("resources \n");
+	print_matrix(resources,1,5);
+	printf("need \n");
+	print_matrix(need,1,5);
+	// comprobar si los elementos de need  excende a los disponibles
+	uint64_t safe = 1;
+	while(i<cols){
+		if(*(need+i) > *(resources+i)){
+			safe = 0;
+			break;
+		}
+		i++;
+	}
+
+	//liberar solicitud si es unsafe, ponerlos en 0
+	if(!safe){
+		i = 0;
+		while(i<cols){
+			*(matriz + id*cols+i) = 0;
+			i++;
+		}
+	}
+	printf("safe %ld \n",safe);
+	//retorna 1 si es safe y 0 para unsafe
+	*(get_regs(context)+REG_A0) = safe; 
+	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+
+	printf("===========================\n");
+}
+
+void emit_release_bankers(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("release_bankers"),0,PROCEDURE,UINT64_T,2,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_load(REG_A1,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_RELEASE_BANKERS);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_release_bankers(uint64_t*context){
+	
+	uint64_t *bankers = (uint64_t*)*(get_regs(context)+REG_A0);
+	uint64_t id = *(get_regs(context)+REG_A1);
+	uint64_t * matriz = get_bankers_mx(bankers);
+	uint64_t cols = get_bankers_cols(bankers);
+	
+	uint64_t i = 0;
+	while(i<cols){  
+		*(matriz + id*cols+i) = 0;
+		i++;
+	}
+	printf("%ld released\n",id);
+	*(get_regs(context)+REG_A0) = 1; 
+	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+	
+}
+
+void emit_create_array(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("create_array"),0,PROCEDURE,UINT64_T,1,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_CREATE_ARRAY);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_create_array(uint64_t*context){
+	uint64_t a_size = *(get_regs(context)+REG_A0);
+	uint64_t *array = zmalloc(a_size * sizeof(uint64_t));
+	*(get_regs(context)+REG_A0) = (uint64_t)array;
+	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
+}
+
+void emit_insert_array(){
+	create_symbol_table_entry(GLOBAL_TABLE,string_copy("insert_array"),0,PROCEDURE,UINT64_T,3,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_load(REG_A1,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_load(REG_A2,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_INSERT_ARRAY);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_insert_array(uint64_t*context){
+	uint64_t *array = (uint64_t*)*(get_regs(context)+REG_A0);
+	uint64_t index = *(get_regs(context)+REG_A1);
+	uint64_t value = *(get_regs(context)+REG_A2);
+	*(array+index) = value;
+
 	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
 }
 
@@ -9939,6 +10391,7 @@ uint64_t load_virtual_memory(uint64_t *table, uint64_t vaddr)
   // assert: is_virtual_address_mapped(table, vaddr) == 1
 
   return load_physical_memory(tlb(table, vaddr));
+
 }
 
 void store_virtual_memory(uint64_t *table, uint64_t vaddr, uint64_t data)
@@ -11492,10 +11945,31 @@ void do_ecall()
 		else if (*(registers+REG_A7) == SYSCALL_THREAD_JOIN){write_register(REG_A0);}
 		else if (*(registers+REG_A7) == SYSCALL_TS){write_register(REG_A0);write_register(REG_A1);}
 		else if (*(registers+REG_A7) == SYSCALL_CAS){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_CREATE_LOCK){write_register(REG_A0);}
 		else if (*(registers+REG_A7) == SYSCALL_LOCK){write_register(REG_A0);}
 		else if (*(registers+REG_A7) == SYSCALL_UNLOCK){write_register(REG_A0);}
 		else if (*(registers+REG_A7) == SYSCALL_GETPID){write_register(REG_A0);}
 		else if (*(registers+REG_A7) == SYSCALL_EXIT){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_CREATE_SEMAPHORE){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_SEMAPHORE_WAIT){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_SEMAPHORE_POS){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_GETTHREADID){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_CREATE_BANKERS){
+				read_register(REG_A1);
+				read_register(REG_A2);
+				write_register(REG_A0);
+			}
+		else if (*(registers+REG_A7) == SYSCALL_REQUEST_BANKERS){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_RELEASE_BANKERS){
+				read_register(REG_A1);
+				write_register(REG_A0);
+			}
+		else if (*(registers+REG_A7) == SYSCALL_CREATE_ARRAY){write_register(REG_A0);}
+		else if (*(registers+REG_A7) == SYSCALL_INSERT_ARRAY){
+				read_register(REG_A1);
+				read_register(REG_A2);
+				write_register(REG_A0);
+			}
 		else if (*(registers + REG_A7) != SYSCALL_EXIT)
     {
       if (*(registers + REG_A7) != SYSCALL_BRK)
@@ -12602,6 +13076,7 @@ uint64_t *new_context()
 
   used_contexts = context;
 
+
   return context;
 }
 
@@ -12960,32 +13435,83 @@ void shallow_copy_segment(uint64_t* parent, uint64_t* child, uint64_t start, uin
 }
 
 
-void fork_context(uint64_t * context, uint64_t * new_context){
-	set_pc(new_context,get_pc(context));
-	uint64_t * old_regs = get_regs(context);
-	uint64_t * new_regs = get_regs(new_context);
-	
-	for(uint64_t i=0;i<NUMBEROFREGISTERS;i++){
-		*(new_regs+i) = *(old_regs+i);
-	}
-	
-	copy_page_table_tree(context,new_context);
+void copy_code_segment_from_context(uint64_t *context,uint64_t * new_context){
+	uint64_t begin_context = get_code_seg_start(context); // code segment
+	uint64_t end_context = begin_context + get_code_seg_size(context);
+	uint64_t begin_new_context = get_code_seg_start(new_context);
 
-	set_lowest_lo_page(new_context,get_lowest_lo_page(context));
-	set_highest_lo_page(new_context,get_highest_lo_page(context));
-	set_lowest_hi_page(new_context,get_lowest_hi_page(context));
-	set_highest_hi_page(new_context,get_highest_hi_page(context));
-	set_code_seg_start(new_context,get_code_seg_start(context));
-	set_code_seg_size(new_context,get_code_seg_size(context));
-	set_data_seg_start(new_context,get_data_seg_start(context));
-	set_data_seg_size(new_context,get_data_seg_size(context));
-	set_heap_seg_start(new_context,get_heap_seg_start(context));
-	set_program_break(new_context,get_program_break(context));
-	set_parent(new_context,get_parent(context));
-	set_virtual_context(new_context,get_virtual_context(context));
-	set_name(new_context,get_name(context));
+	while(begin_context != end_context){
+		map_and_store(new_context,begin_new_context,load_virtual_memory(get_pt(context),begin_context));
+		begin_new_context++;begin_context++;
+	}
+
 }
 
+void copy_data_segment_from_context(uint64_t *context,uint64_t * new_context){
+	uint64_t begin_context = get_data_seg_start(context); // data segment 
+	uint64_t end_context = begin_context + get_data_seg_size(context);
+	uint64_t begin_new_context = get_data_seg_start(new_context);
+
+	while(begin_context != end_context){
+		map_and_store(new_context,begin_new_context,load_virtual_memory(get_pt(context),begin_context));
+		begin_new_context++;begin_context++;
+	}
+
+}
+
+void copy_heap_segment_from_context(uint64_t *context,uint64_t * new_context){
+	uint64_t begin_context = get_heap_seg_start(context); // heap segment
+	uint64_t end_context = get_program_break(context);
+	uint64_t begin_new_context = get_heap_seg_start(new_context);
+
+	while(begin_context != end_context){
+		map_and_store(new_context,begin_new_context,load_virtual_memory(get_pt(context),begin_context));
+		begin_new_context++;begin_context++;
+	}
+
+}
+
+void copy_stack_segment_from_context(uint64_t *context,uint64_t * new_context){
+	uint64_t begin_context =   *(get_regs(context)+REG_SP);// stack segment
+	uint64_t end_context = HIGHESTVIRTUALADDRESS;
+	uint64_t begin_new_context =  *(get_regs(new_context)+REG_SP);
+
+	while(begin_context != end_context){
+		map_and_store(new_context,begin_new_context,load_virtual_memory(get_pt(context),begin_context));
+		begin_new_context++;begin_context++;
+	}
+
+}
+
+void fork_context(uint64_t * context, uint64_t * child){
+	set_pc(child,get_pc(context));
+
+	for(uint64_t i=0;i<NUMBEROFREGISTERS;i++)
+		*(get_regs(child)+i) = *(get_regs(context)+i);
+
+	set_lowest_lo_page(child,get_lowest_lo_page(context));
+	set_highest_lo_page(child,get_highest_lo_page(context));
+	set_lowest_hi_page(child,get_lowest_hi_page(context));
+	set_highest_hi_page(child,get_highest_hi_page(context));
+
+	set_code_seg_start(child,get_code_seg_start(context)); //es obligatorio definir los nuevos limites
+	set_code_seg_size(child,get_code_seg_size(context));
+	set_data_seg_start(child,get_data_seg_start(context));
+	set_data_seg_size(child,get_data_seg_size(context));
+	set_heap_seg_start(child,get_heap_seg_start(context));
+	set_program_break(child,get_program_break(context));
+
+	copy_code_segment_from_context(context,child);
+	copy_data_segment_from_context(context,child);
+	copy_heap_segment_from_context(context,child);
+	copy_stack_segment_from_context(context,child);
+
+
+	set_parent(child,get_parent(context));
+	set_virtual_context(child,get_virtual_context(context));
+	set_name(child,get_name(context));
+}
+/*
 void thread_context(uint64_t * context, uint64_t * new_context){
 	set_pc(new_context,get_pc(context));
 	uint64_t * old_regs = get_regs(context);
@@ -13033,6 +13559,54 @@ void thread_context(uint64_t * context, uint64_t * new_context){
 	set_program_break(new_context,get_program_break(context));
 	set_virtual_context(new_context,get_virtual_context(context));
 	set_name(new_context,get_name(context));
+	set_thread_id(new_context,get_thread_id(new_context)+1);
+}
+*/
+
+void thread_context(uint64_t * context, uint64_t * new_context){
+	set_pc(new_context,get_pc(context));
+	uint64_t * old_regs = get_regs(context);
+	uint64_t * new_regs = get_regs(new_context);
+
+	for(uint64_t i=0;i<NUMBEROFREGISTERS;i++)
+		*(new_regs+i) = *(old_regs+i);
+	
+
+	/*
+  // Memoria compartida (shallow copy)
+  shallow_copy_segment(context, new_context,
+                       get_code_seg_start(context),
+                       get_code_seg_start(context) + get_code_seg_size(context));
+
+  shallow_copy_segment(context, new_context,
+                       get_data_seg_start(context),
+                       get_data_seg_start(context) + get_data_seg_size(context));
+
+  shallow_copy_segment(context, new_context,
+                       get_heap_seg_start(context),
+                       get_program_break(context));
+
+	*/
+
+	copy_stack_segment_from_context(context,new_context);
+
+
+	set_lowest_hi_page(new_context, get_lowest_hi_page(context));
+	set_highest_hi_page(new_context, get_highest_hi_page(context));
+
+	set_lowest_lo_page(new_context,get_lowest_lo_page(context));
+	set_highest_lo_page(new_context,get_highest_lo_page(context));
+	set_lowest_lo_page(new_context,get_lowest_lo_page(context));
+	set_highest_lo_page(new_context,get_highest_lo_page(context));
+	set_code_seg_start(new_context,get_code_seg_start(context));
+	set_code_seg_size(new_context,get_code_seg_size(context));
+	set_data_seg_start(new_context,get_data_seg_start(context)); 
+	set_data_seg_size(new_context,get_data_seg_size(context)); 	//shared
+	set_heap_seg_start(new_context,get_heap_seg_start(context)); //shared
+	set_program_break(new_context,get_program_break(context));
+	set_virtual_context(new_context,get_virtual_context(context));
+	set_name(new_context,get_name(context));
+
 	set_thread_id(new_context,get_thread_id(new_context)+1);
 }
 
@@ -13558,12 +14132,31 @@ uint64_t handle_system_call(uint64_t *context)
 		implement_unlock(context);
 	else if (a7 == SYSCALL_GETPID)
 		implement_getpid(context);
+	else if (a7 == SYSCALL_CREATE_SEMAPHORE)
+		implement_create_semaphore(context);
+	else if (a7 == SYSCALL_SEMAPHORE_WAIT)
+		implement_semaphore_wait(context);
+	else if (a7 == SYSCALL_SEMAPHORE_POS)
+		implement_semaphore_pos(context);
+	else if (a7 == SYSCALL_GETTHREADID)
+		implement_get_thread_id(context);
+	else if (a7 == SYSCALL_CREATE_LOCK)
+		implement_create_lock(context);
+	else if (a7 == SYSCALL_CREATE_BANKERS)
+		implement_create_bankers(context);
+	else if (a7 == SYSCALL_REQUEST_BANKERS)
+		implement_request_bankers(context);
+	else if (a7 == SYSCALL_RELEASE_BANKERS)
+		implement_release_bankers(context);
+	else if (a7 == SYSCALL_CREATE_ARRAY)
+		implement_create_array(context);
+	else if (a7 == SYSCALL_INSERT_ARRAY)
+		implement_insert_array(context);
 	else if (a7 == SYSCALL_EXIT)
   {	
 		uint64_t* parent = get_parent(context);
 		uint64_t key = 1;
 		
-		//print_context(context);
 
 		if(parent != (uint64_t*)0){
 			set_n_children(parent,get_n_children(parent) - 1);
@@ -13749,15 +14342,6 @@ uint64_t mipster(uint64_t *to_context)
 			printf("from_context \n");
 			print_context(from_context);
 		}
-		/*
-    if (get_parent(from_context) != MY_CONTEXT)
-    {
-      // switch to parent which is in charge of handling exceptions
-      to_context = get_parent(from_context);
-
-      timeout = TIMEROFF;
-    }
-    else */
 		if (handle_exception(from_context) == EXIT){  
       if(debug_mipster){
 				printf("Entro al else if , exception EXIT se cierra el programa\n");
@@ -13767,36 +14351,27 @@ uint64_t mipster(uint64_t *to_context)
 				iterate_blocked_contexts();
 			}
 			return get_exit_code(from_context);
-			/*
-			if(get_parent(from_context) != (uint64_t *)0){
-				
-			} else{ return get_exit_code(from_context); } 
-			*/
 		}
     else
     {
-			if(debug_mipster){
-				printf("Entro al else \n");
+			if(debug_mipster){  printf("Entro al else \n"); }
+			if(get_state(from_context) == READY){
+      	to_context = get_next_context(from_context); //modificar esto , se debe ejecutar solo si esta en READY
+   			if (to_context == (uint64_t *)0){
+					to_context = used_contexts;
+				} 
 			}
-      to_context = get_next_context(from_context);
-      if (to_context == (uint64_t *)0){
-				to_context = used_contexts;
-				if(debug_mipster){
-					printf("to_context = used_contexts\n");
-					print_context(to_context);
-				}	
-			} 
 			else { 
-				if(debug_mipster){
-					print_context(to_context);
-				}
+				to_context = used_contexts;
 			}
 
       timeout = TIMESLICE;
     }
 		if(debug_mipster){
+			print_context(to_context);
 			iterate_used_contexts();
 			iterate_blocked_contexts();
+			iterate_waiting_contexs();
 			printf("\n");
 			printf("\n===================FIN DE CICLO=====================================\n");
 		}
