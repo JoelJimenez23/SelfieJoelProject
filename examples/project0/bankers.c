@@ -12,7 +12,7 @@ uint64_t contador;
 uint64_t *cs_counter;
 
 void test(){
-	while(contador < 10){ 
+	while(contador < 40){ 
 	sem_wait(sem);
 	//pensar();
 	if(get_pid() == 1){

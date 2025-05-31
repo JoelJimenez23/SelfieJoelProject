@@ -2763,6 +2763,15 @@ void wait_context(uint64_t * context){
 	add_to_list(context,&waiting_lock_contexts);
 }
 
+void use_block_context(uint64_t *context){
+	delete_from_list(context,&blocked_contexts);
+	add_to_list(context,&used_contexts);
+}
+
+void block_context(uint64_t *context){
+	delete_from_list(context,&used_contexts);
+	add_to_list(context,&blocked_contexts);
+}
 
 void delete_thread(uint64_t* context){
 	//caso 1 ,  prev <-> context <-> NULL 
@@ -9248,7 +9257,6 @@ void implement_thread(uint64_t * context){
 		set_thread_id(thread,get_n_threads(context)+1);
 		set_n_threads(context,get_n_threads(context)+1);
 
-
 		*(get_regs(thread)+REG_A0) = get_thread_id(thread);
 		set_pc(thread,get_pc(thread)+INSTRUCTIONSIZE);
 
@@ -9346,7 +9354,6 @@ void emit_lock(){
 
 void implement_lock(uint64_t *context){
 	uint64_t *lock = (uint64_t*)*(get_regs(context)+REG_A0);
-
 
 
 	if(get_lock_owner(lock) == LOCK_UNOWNED){
@@ -9514,7 +9521,8 @@ void emit_get_thread_id(){
 }
 
 void implement_get_thread_id(uint64_t*context){
-  *(get_regs(context)+REG_A0) = get_thread_id(context);
+	uint64_t thread_id = get_thread_id(context);
+  *(get_regs(context)+REG_A0) = thread_id;
   set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
 }
 
@@ -13367,130 +13375,6 @@ void save_context(uint64_t *context)
 }
 
 
-void copy_page_table_tree(uint64_t* parent, uint64_t* child) {
-  uint64_t** parent_root = (uint64_t**) get_pt(parent);
-  uint64_t** child_root  = (uint64_t**) get_pt(child);
-
-  uint64_t i, j, k;
-  uint64_t** parent_leaf;
-  uint64_t** child_leaf;
-  uint64_t* parent_page;
-  uint64_t* child_page;
-
-  for (i = 0; i < NUMBEROFPAGES / NUMBEROFLEAFPTES; i++) {
-    if (parent_root[i] != (uint64_t*) 0) {
-      // 1. Crear nueva hoja para el hijo
-      child_root[i] = (uint64_t*) zmalloc(NUMBEROFLEAFPTES * sizeof(uint64_t*));
-      parent_leaf = (uint64_t**) parent_root[i];
-      child_leaf = (uint64_t**) child_root[i];
-
-      for (j = 0; j < NUMBEROFLEAFPTES; j++) {
-        if (parent_leaf[j] != (uint64_t*) 0) {
-          // 2. Copiar página física
-          parent_page = parent_leaf[j];
-          child_page = zmalloc(PAGESIZE);
-
-          for (k = 0; k < PAGESIZE / sizeof(uint64_t); k++)
-            child_page[k] = parent_page[k];
-
-          child_leaf[j] = child_page;
-        }
-      }
-    }
-  }
-}
-
-void copy_stack_segment(uint64_t* parent, uint64_t* child) {
-  uint64_t** parent_root = (uint64_t**) get_pt(parent);
-  uint64_t** child_root  = (uint64_t**) get_pt(child);
-
-  uint64_t i, j, k;
-  uint64_t vpage;
-  uint64_t** parent_leaf;
-  uint64_t** child_leaf;
-  uint64_t* parent_page;
-  uint64_t* child_page;
-
-  uint64_t lo = get_lowest_hi_page(parent);
-  uint64_t hi = get_highest_hi_page(parent);
-
-  for (vpage = lo; vpage <= hi; vpage++) {
-    i = vpage / NUMBEROFLEAFPTES;
-    j = vpage % NUMBEROFLEAFPTES;
-
-    if (parent_root[i] == (uint64_t*) 0)
-      continue;
-
-    if (child_root[i] == (uint64_t*) 0)
-      child_root[i] = (uint64_t*) zmalloc(NUMBEROFLEAFPTES * sizeof(uint64_t*));
-
-    parent_leaf = (uint64_t**) parent_root[i];
-    child_leaf = (uint64_t**) child_root[i];
-
-    if (parent_leaf[j] != (uint64_t*) 0) {
-      parent_page = parent_leaf[j];
-      child_page = zmalloc(PAGESIZE);
-
-      for (k = 0; k < PAGESIZE / sizeof(uint64_t); k++)
-        child_page[k] = parent_page[k];
-
-      child_leaf[j] = child_page;
-    }
-  }
-}
-
-void copy_code_segment(uint64_t* parent, uint64_t* child) {
-  uint64_t start = get_code_seg_start(parent);
-  uint64_t size  = get_code_seg_size(parent);
-  uint64_t end   = start + size;
-
-  uint64_t addr;
-  for (addr = start; addr < end; addr += PAGESIZE) {
-    uint64_t vpage = get_page_of_virtual_address(addr);
-    uint64_t i = vpage / NUMBEROFLEAFPTES;
-    uint64_t j = vpage % NUMBEROFLEAFPTES;
-
-    uint64_t** parent_root = (uint64_t**) get_pt(parent);
-    uint64_t** child_root  = (uint64_t**) get_pt(child);
-
-    if (parent_root[i] == (uint64_t*) 0)
-      continue;
-
-    if (child_root[i] == (uint64_t*) 0)
-      child_root[i] = (uint64_t*) zmalloc(NUMBEROFLEAFPTES * sizeof(uint64_t*));
-
-    uint64_t** parent_leaf = (uint64_t**) parent_root[i];
-    uint64_t** child_leaf = (uint64_t**) child_root[i];
-
-    if (parent_leaf[j] != (uint64_t*) 0) {
-      child_leaf[j] = parent_leaf[j]; // Shallow copy del código
-    }
-  }
-}
-
-void shallow_copy_segment(uint64_t* parent, uint64_t* child, uint64_t start, uint64_t end) {
-  for (uint64_t addr = start; addr < end; addr += PAGESIZE) {
-    uint64_t vpage = get_page_of_virtual_address(addr);
-    uint64_t i = vpage / NUMBEROFLEAFPTES;
-    uint64_t j = vpage % NUMBEROFLEAFPTES;
-
-    uint64_t** parent_root = (uint64_t**) get_pt(parent);
-    uint64_t** child_root  = (uint64_t**) get_pt(child);
-
-    if (parent_root[i] == (uint64_t*) 0)
-      continue;
-
-    if (child_root[i] == (uint64_t*) 0)
-      child_root[i] = (uint64_t*) zmalloc(NUMBEROFLEAFPTES * sizeof(uint64_t*));
-
-    uint64_t** parent_leaf = (uint64_t**) parent_root[i];
-    uint64_t** child_leaf  = (uint64_t**) child_root[i];
-
-    if (parent_leaf[j] != (uint64_t*) 0) {
-      child_leaf[j] = parent_leaf[j]; // shallow copy
-    }
-  }
-}
 
 
 void copy_code_segment_from_context(uint64_t *context,uint64_t * new_context){
@@ -13547,6 +13431,9 @@ void fork_context(uint64_t * context, uint64_t * child){
 	for(uint64_t i=0;i<NUMBEROFREGISTERS;i++)
 		*(get_regs(child)+i) = *(get_regs(context)+i);
 
+
+
+	
 	set_lowest_lo_page(child,get_lowest_lo_page(context));
 	set_highest_lo_page(child,get_highest_lo_page(context));
 	set_lowest_hi_page(child,get_lowest_hi_page(context));
@@ -13569,7 +13456,22 @@ void fork_context(uint64_t * context, uint64_t * child){
 	set_virtual_context(child,get_virtual_context(context));
 	set_name(child,get_name(context));
 }
-/*
+
+void shallow_copy(uint64_t *context, uint64_t *new_context){
+	uint64_t begin_vaddress = get_code_seg_start(context);
+	uint64_t end_vaddress = get_program_break(context);
+	uint64_t begin_page = get_page_of_virtual_address(begin_vaddress);
+	uint64_t end_page = get_page_of_virtual_address(end_vaddress);
+	
+	while(begin_page != end_page){
+		uint64_t context_frame = get_frame_for_page(get_pt(context),begin_page);
+		set_PTE_for_page(get_pt(new_context),begin_page,context_frame);
+		begin_page++;
+	}
+
+}
+
+
 void thread_context(uint64_t * context, uint64_t * new_context){
 	set_pc(new_context,get_pc(context));
 	uint64_t * old_regs = get_regs(context);
@@ -13578,92 +13480,30 @@ void thread_context(uint64_t * context, uint64_t * new_context){
 	for(uint64_t i=0;i<NUMBEROFREGISTERS;i++)
 		*(new_regs+i) = *(old_regs+i);
 	
-	uint64_t old_sp = old_regs[REG_SP];
-	uint64_t offset = HIGHESTVIRTUALADDRESS - old_sp;
-	new_regs[REG_SP] = HIGHESTVIRTUALADDRESS - offset;
 
-
-  // Memoria compartida (shallow copy)
-  shallow_copy_segment(context, new_context,
-                       get_code_seg_start(context),
-                       get_code_seg_start(context) + get_code_seg_size(context));
-
-  shallow_copy_segment(context, new_context,
-                       get_data_seg_start(context),
-                       get_data_seg_start(context) + get_data_seg_size(context));
-
-  shallow_copy_segment(context, new_context,
-                       get_heap_seg_start(context),
-                       get_program_break(context));
-
-  // Stack (copia profunda)
-  copy_stack_segment(context, new_context);
-
-
-
-
-	set_lowest_hi_page(new_context, get_lowest_hi_page(context));
-	set_highest_hi_page(new_context, get_highest_hi_page(context));
 
 	set_lowest_lo_page(new_context,get_lowest_lo_page(context));
 	set_highest_lo_page(new_context,get_highest_lo_page(context));
-	set_lowest_lo_page(new_context,get_lowest_lo_page(context));
-	set_highest_lo_page(new_context,get_highest_lo_page(context));
+
+	set_lowest_hi_page(new_context,get_lowest_hi_page(context));
+	set_highest_hi_page(new_context,get_highest_hi_page(context));
+
 	set_code_seg_start(new_context,get_code_seg_start(context));
 	set_code_seg_size(new_context,get_code_seg_size(context));
+	
 	set_data_seg_start(new_context,get_data_seg_start(context)); 
 	set_data_seg_size(new_context,get_data_seg_size(context)); 	//shared
+	
 	set_heap_seg_start(new_context,get_heap_seg_start(context)); //shared
 	set_program_break(new_context,get_program_break(context));
+
 	set_virtual_context(new_context,get_virtual_context(context));
 	set_name(new_context,get_name(context));
-	set_thread_id(new_context,get_thread_id(new_context)+1);
-}
-*/
 
-void thread_context(uint64_t * context, uint64_t * new_context){
-	set_pc(new_context,get_pc(context));
-	uint64_t * old_regs = get_regs(context);
-	uint64_t * new_regs = get_regs(new_context);
-
-	for(uint64_t i=0;i<NUMBEROFREGISTERS;i++)
-		*(new_regs+i) = *(old_regs+i);
-	
-
-	/*
-  // Memoria compartida (shallow copy)
-  shallow_copy_segment(context, new_context,
-                       get_code_seg_start(context),
-                       get_code_seg_start(context) + get_code_seg_size(context));
-
-  shallow_copy_segment(context, new_context,
-                       get_data_seg_start(context),
-                       get_data_seg_start(context) + get_data_seg_size(context));
-
-  shallow_copy_segment(context, new_context,
-                       get_heap_seg_start(context),
-                       get_program_break(context));
-
-	*/
+	shallow_copy(context,new_context);
 
 	copy_stack_segment_from_context(context,new_context);
-
-
-	set_lowest_hi_page(new_context, get_lowest_hi_page(context));
-	set_highest_hi_page(new_context, get_highest_hi_page(context));
-
-	set_lowest_lo_page(new_context,get_lowest_lo_page(context));
-	set_highest_lo_page(new_context,get_highest_lo_page(context));
-	set_lowest_lo_page(new_context,get_lowest_lo_page(context));
-	set_highest_lo_page(new_context,get_highest_lo_page(context));
-	set_code_seg_start(new_context,get_code_seg_start(context));
-	set_code_seg_size(new_context,get_code_seg_size(context));
-	set_data_seg_start(new_context,get_data_seg_start(context)); 
-	set_data_seg_size(new_context,get_data_seg_size(context)); 	//shared
-	set_heap_seg_start(new_context,get_heap_seg_start(context)); //shared
-	set_program_break(new_context,get_program_break(context));
-	set_virtual_context(new_context,get_virtual_context(context));
-	set_name(new_context,get_name(context));
+	
 
 	set_thread_id(new_context,get_thread_id(new_context)+1);
 }
@@ -14218,6 +14058,7 @@ uint64_t handle_system_call(uint64_t *context)
 		implement_get_critical_section_counter(context);
 	else if (a7 == SYSCALL_EXIT)
   {	
+
 		uint64_t* parent = get_parent(context);
 		uint64_t key = 1;
 		
@@ -14243,11 +14084,8 @@ uint64_t handle_system_call(uint64_t *context)
 		if(get_main_thread(context) == (uint64_t *)0){ // context == main thread
 			if(get_joined(context)){ // main_thread para blocked
 				if(get_next_thread(context) != (uint64_t*)0){
-					set_next_context(context,blocked_contexts);
-					set_prev_context(context,(uint64_t *)0);
-					if(blocked_contexts != (uint64_t *)0)
-						set_prev_context(blocked_contexts,context);
-					blocked_contexts = context;
+					block_context(context);	
+					set_state(context,BLOCKED);
 				}
 			} else { // todas las threads se eliminan
 				while(get_next_thread(context) != (uint64_t *)0){
@@ -14260,16 +14098,12 @@ uint64_t handle_system_call(uint64_t *context)
 			}
 		} else if (get_main_thread(context) != (uint64_t *)0){
 			// si ya no hay mas threads joined se elimina el main thread
-			if(get_n_threads(get_main_thread(context)) == 1 ){
-				delete_from_list(get_main_thread(context),&blocked_contexts);
-				set_next_context(get_main_thread(context),used_contexts);
-				set_prev_context(get_main_thread(context),(uint64_t *)0);
-				if(used_contexts != (uint64_t *)0)
-					set_prev_context(used_contexts,get_main_thread(context));
-				used_contexts = get_main_thread(context);			
+			if(get_n_threads(get_main_thread(context)) == 1 && get_state(get_main_thread(context)) == BLOCKED){
+				use_block_context(get_main_thread(context)); //despierta a la thread main
 			}
 			delete_thread(context);
 			set_n_threads(get_main_thread(context),get_n_threads(get_main_thread(context))-1);
+			key = 0;
 		}
 
 		
@@ -14281,7 +14115,6 @@ uint64_t handle_system_call(uint64_t *context)
     set_exit_code(context, EXITCODE_UNKNOWNSYSCALL);
 
 		if((used_contexts == context && key == 1) || used_contexts == (uint64_t *)0) {
-			//printf("\nse llamo a la syscall exit\n");
   	  return EXIT;
 		} 
   }
