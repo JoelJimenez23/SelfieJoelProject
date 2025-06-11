@@ -15,7 +15,7 @@ void test(){
 	while(contador < 40){ 
 	sem_wait(sem);
 	//pensar();
-	if(get_pid() == 1){
+	if(thread_id() == 1){
 		
 		lock(lockcito);
 		if(request_bankers(bankers,0,array_1)){
@@ -27,7 +27,7 @@ void test(){
 			unlock(lockcito);
 		}
 
-	}else if (get_pid() == 2){
+	}else if (thread_id() == 2){
 
 		lock(lockcito);
 		if(request_bankers(bankers,1,array_2)){
@@ -39,7 +39,7 @@ void test(){
 		unlock(lockcito);
 		}
 
-	} else if (get_pid() == 3){
+	} else if (thread_id() == 3){
 
 		lock(lockcito);
 		if(request_bankers(bankers,2,array_3)){
@@ -50,7 +50,7 @@ void test(){
 		} else {
 			unlock(lockcito);
 		}
-	} else if (get_pid() == 4){
+	} else if (thread_id() == 4){
 
 		lock(lockcito);
 		if(request_bankers(bankers,3,array_4)){
@@ -61,7 +61,7 @@ void test(){
 		} else {
 				unlock(lockcito);
 		}
-	} else if (get_pid() == 5){
+	} else if (thread_id() == 5){
 		lock(lockcito);
 		if(request_bankers(bankers,4,array_5)){
 			increment_critical_section_counter(cs_counter,4);
@@ -106,18 +106,11 @@ int main(){
 	insert_array(array_5,4,1);
 	insert_array(array_5,0,1);
 
+	thread();
+	thread();
+	thread();
+	thread();
 
-
-	fork();
-	if(get_pid() == 1){
-		fork();
-	}
-	if(get_pid() == 1){
-		fork();
-	}
-	if(get_pid() == 1){
-		fork();
-	}
 
 	cs_counter = critical_section_counter(5);	
 
