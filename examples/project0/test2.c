@@ -20,6 +20,7 @@ void sem_wait_t(uint64_t * sem){
 	uint64_t *tmp;
 	uint64_t *test;
 	uint64_t *test1;
+	request(1);
 	lock(sem_lock);
 	if(*sem == 0){
 		if(*(sem+1) == (uint64_t*)0){
@@ -44,11 +45,13 @@ void sem_wait_t(uint64_t * sem){
 		*sem = *sem - 1;
 		unlock(sem_lock);
 	}
+	release(1);
 }
 
 void sem_post(uint64_t * sem){
 	uint64_t *head;
 	uint64_t *test;
+	release(1);
 	lock(sem_lock);
 	*sem = *sem + 1; 
 	head = *(sem+1);
@@ -57,6 +60,7 @@ void sem_post(uint64_t * sem){
 		awake(*head);
 	}
 	unlock(sem_lock);
+	release(1);
 }
 
 void test(){

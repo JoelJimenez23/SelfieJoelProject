@@ -1379,6 +1379,12 @@ void implement_awake(uint64_t *context);
 void emit_printf();
 void implement_printf(uint64_t *context);
 
+void emit_release();
+void implement_release(uint64_t *context);
+
+void emit_request();
+void implement_request(uint64_t *context);
+
 uint64_t is_boot_level_zero();
 
 // ------------------------ GLOBAL CONSTANTS -----------------------
@@ -1419,6 +1425,8 @@ uint64_t SYSCALL_GET_CONTEXT = 43;
 uint64_t SYSCALL_SLEEP = 44;
 uint64_t SYSCALL_AWAKE = 45;
 uint64_t SYSCALL_PRINTF = 46;
+uint64_t SYSCALL_REQUEST = 47;
+uint64_t SYSCALL_RELEASE = 48;
 
 /* DIRFD_AT_FDCWD corresponds to AT_FDCWD in fcntl.h and
 	 is passed as first argument of the openat system call
@@ -2374,6 +2382,9 @@ uint64_t pid_initializer = 1;
 uint64_t READY = 1;
 uint64_t BLOCKED = 0;
 uint64_t WAIT = 2;
+uint64_t maxi[2] = {1,2}; // maximo // se puede quitar es solo para que no execeda   
+uint64_t actual[2] = {1,3}; // en el que se descuenta
+
 
 uint64_t *allocate_context(); // declaration avoids warning in the Boehm garbage collector
 
@@ -2739,7 +2750,7 @@ uint64_t *used_contexts = (uint64_t *)0; // doubly-linked list of used contexts
 uint64_t *free_contexts = (uint64_t *)0; // singly-linked list of free contexts
 uint64_t *blocked_contexts = (uint64_t *)0; // list of blocked contexts
 uint64_t *waiting_lock_contexts = (uint64_t *)0;
-
+uint64_t *waiting_temp = (uint64_t*)0;
 
 void add_to_list(uint64_t * context,uint64_t ** list){
 	set_next_context(context,*list);
@@ -7365,6 +7376,8 @@ void selfie_compile()
 	emit_sleep();
 	emit_awake();
 	emit_printf();
+	emit_request();
+	emit_release();
 
   if (GC_ON)
   {
@@ -9932,6 +9945,61 @@ void implement_printf(uint64_t *context){
 	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
 }
 
+void emit_request(){
+  create_symbol_table_entry(GLOBAL_TABLE,string_copy("request"),0,PROCEDURE,UINT64_T,1,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_REQUEST);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_request(uint64_t *context){
+	printf("REQUEST \n");
+  uint64_t  i = *(get_regs(context)+REG_A0);
+  //printf("Proceso con PID %lu entra a request(%lu)\n", get_pid(context), i);
+  if(actual[i] > 0){
+    actual[i]--;
+  }
+  else{
+    // quita de used añade a waiting
+    delete_from_list(context,&used_contexts);
+	  add_to_list(context,&waiting_temp);
+  }
+  set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
+	printf("END REQUEST \n");
+}
+
+void emit_release(){
+  create_symbol_table_entry(GLOBAL_TABLE,string_copy("release"),0,PROCEDURE,UINT64_T,1,code_size);
+	emit_load(REG_A0,REG_SP,0);
+	emit_addi(REG_SP,REG_SP,WORDSIZE);
+	emit_addi(REG_A7,REG_ZR,SYSCALL_RELEASE);
+	emit_ecall();
+	emit_jalr(REG_ZR,REG_RA,0);
+}
+
+void implement_release(uint64_t *context){
+	printf("RELEASE\n");
+  uint64_t  i = *(get_regs(context)+REG_A0);
+  //printf("Proceso con PID %lu entra a realese(%lu)\n", get_pid(context), i);
+  actual[i]++;
+  if(actual[i] > maxi[i]){
+		actual[i] = maxi[i];
+    // do nothing
+    //printf("gaaa 1 \n");
+  }
+  else{
+    uint64_t* temp;
+    while (waiting_temp!= 0) {
+      temp = waiting_temp;
+      delete_from_list(temp, &waiting_temp);
+      add_to_list(temp,&used_contexts);
+    }
+  }
+  set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
+	printf("END RELEASE \n");
+}
 
 uint64_t is_boot_level_zero()
 {
@@ -12241,6 +12309,12 @@ void do_ecall()
 			read_register(REG_A1);
 			write_register(REG_A0);	
 		}
+		else if (*(registers+REG_A7) == SYSCALL_REQUEST){
+			write_register(REG_A0);
+		}
+		else if (*(registers+REG_A7) == SYSCALL_RELEASE){
+			write_register(REG_A0);
+		}
 		else if (*(registers + REG_A7) != SYSCALL_EXIT)
     {
       if (*(registers + REG_A7) != SYSCALL_BRK)
@@ -14213,6 +14287,10 @@ uint64_t handle_system_call(uint64_t *context)
 		implement_awake(context);
 	else if (a7 == SYSCALL_PRINTF)
 		implement_printf(context);
+	else if (a7 == SYSCALL_REQUEST)
+		implement_request(context);
+	else if (a7 == SYSCALL_RELEASE)
+		implement_release(context);
 	else if (a7 == SYSCALL_EXIT)
   {	
 
