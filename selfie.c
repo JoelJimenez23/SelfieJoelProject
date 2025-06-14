@@ -9955,7 +9955,6 @@ void emit_request(){
 }
 
 void implement_request(uint64_t *context){
-	printf("REQUEST \n");
   uint64_t  i = *(get_regs(context)+REG_A0);
   //printf("Proceso con PID %lu entra a request(%lu)\n", get_pid(context), i);
   if(actual[i] > 0){
@@ -9967,7 +9966,6 @@ void implement_request(uint64_t *context){
 	  add_to_list(context,&waiting_temp);
   }
   set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
-	printf("END REQUEST \n");
 }
 
 void emit_release(){
@@ -9980,7 +9978,6 @@ void emit_release(){
 }
 
 void implement_release(uint64_t *context){
-	printf("RELEASE\n");
   uint64_t  i = *(get_regs(context)+REG_A0);
   //printf("Proceso con PID %lu entra a realese(%lu)\n", get_pid(context), i);
   actual[i]++;
@@ -9998,7 +9995,6 @@ void implement_release(uint64_t *context){
     }
   }
   set_pc(context, get_pc(context) + INSTRUCTIONSIZE);
-	printf("END RELEASE \n");
 }
 
 uint64_t is_boot_level_zero()
