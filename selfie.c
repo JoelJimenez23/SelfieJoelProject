@@ -9173,23 +9173,42 @@ void implement_brk(uint64_t *context)
 
   // attempt to update program break
 	
-	print_context(context);
+	//print_context(context);
 
 	if(get_n_threads(context) > 0 && get_main_thread(context) == (uint64_t*)0){
 		//thread main
+		//printf("brk main \n");
+		//printf("context %ld ",get_pid(context));
 		new_program_break = try_brk(context,new_program_break);
 		uint64_t *temp = get_next_thread(context);
-		do {
+
+		while(temp != (uint64_t)0){
 			try_brk(temp,new_program_break);
-		}while(get_next_thread(temp) != (uint64_t*)0);
+			temp = get_next_thread(temp);
+			//printf("context %ld ",get_pid(context));
+		}
+		//printf("\n");
 	}
 	else if (get_main_thread(context) != (uint64_t*)0){
 		//thread hija
+		//iterate_used_contexts(); 
+		//iterate_waiting_contexs();
+		//iterate_thread_contexs(get_main_thread(context));
+		//printf("brk hija \n");
+		//printf("context %ld \n",get_pid(context));
+
 		new_program_break = try_brk(get_main_thread(context),new_program_break);
 		uint64_t *temp = get_next_thread(get_main_thread(context));
-		do {
+		//printf(" %p \n",get_main_thread(context));
+		//printf(" %p \n",temp);
+	
+		while(temp != (uint64_t*)0){
+			//printf("%p \n",temp);
 			try_brk(temp,new_program_break);
-		}while(get_next_thread(temp) != (uint64_t*)0);
+			temp = get_next_thread(temp);
+		}
+		//printf("\n");
+
 	} else {
 		new_program_break = try_brk(context,new_program_break);
 	}
@@ -9317,7 +9336,7 @@ void implement_thread(uint64_t * context){
 		
 		set_main_thread(thread,context);
 		set_thread_id(thread,get_n_threads(context)+1);
-		set_n_threads(context,get_n_threads(context)+1);
+		//set_n_threads(context,get_n_threads(context)+1);
 		/*
 		printf("++++++++++++++++++++++\n");
 		print_context(context);
@@ -9422,11 +9441,13 @@ void implement_lock(uint64_t *context){
 
 
 	if(get_lock_owner(lock) == LOCK_UNOWNED){
+		//printf("CONTEXT %p|%ld TOOK LOCK %p \n",context,get_pid(context),lock);
 		set_lock_owner(lock,context);
 		set_pc(context,get_pc(context)+INSTRUCTIONSIZE);	
   	*(get_regs(context)+REG_A0) = 1;
 	} else {
 		//modificar el estado a todos al wait
+		//printf("CONTEXT %p|%ld COULDN'T TAKE LOCK %p \n",context,get_pid(context),lock);
 		set_lock(context,lock);
 		wait_context(context);
 		set_state(context,WAIT);
@@ -9447,6 +9468,7 @@ void emit_unlock(){
 void implement_unlock(uint64_t *context){
 	uint64_t *lock = (uint64_t*)*(get_regs(context)+REG_A0);
 	if(get_lock_owner(lock) == context){
+		//printf("CONTEXT %p|%ld UNLOCK %p \n",context,get_pid(context),lock);
 		uint64_t* tmp = waiting_lock_contexts; //waiting_lock_contexts head
 		while(tmp != (uint64_t *)0){
 			if(get_lock(tmp) == lock){
@@ -9860,13 +9882,12 @@ void emit_sleep(){
 }
 
 void implement_sleep(uint64_t *context){
-	if(get_state(context) == READY){  
+	if(get_state(context) == READY){
+		//printf("CONTEXT %p SLEEP \n",context);
 		wait_context(context);
 		set_state(context,WAIT);
 	}
 	set_pc(context,get_pc(context)+INSTRUCTIONSIZE);
-	iterate_used_contexts();
-	iterate_waiting_contexs();
 }
 
 void emit_awake(){
@@ -9880,7 +9901,7 @@ void emit_awake(){
 
 void implement_awake(uint64_t *context){
 	uint64_t *context_2_awake =  (uint64_t*)*(get_regs(context)+REG_A0);
-	printf("awake context %p \n",context_2_awake);
+	//printf("awake context %p \n",context_2_awake);
 	if(get_state(context_2_awake) != READY){ 
 		use_context(context_2_awake);
 		set_state(context_2_awake,READY);
@@ -13407,8 +13428,8 @@ void init_context(uint64_t *context, uint64_t *parent, uint64_t *vctxt)
 	set_thread_id(context,0);
 	set_joined(context,0);
 	set_main_thread(context,(uint64_t *)0);
-
-	//printf("%p new thread pid %ld, \n",context,get_pid(context));
+	set_n_threads(context,1);
+	//printf("%p new context pid %ld, \n",context,get_pid(context));
 
 }
 
@@ -13680,7 +13701,7 @@ void thread_context(uint64_t * context, uint64_t * new_context){
 	  end_context_stack = *(get_regs(get_next_thread(context))+REG_SP);
 	}
 
-	uint64_t offset = 2 * PAGESIZE;
+	uint64_t offset = 8 * PAGESIZE;
 	//uint64_t begin_new_context_stack = begin_context_stack - offset;
 	uint64_t begin_new_context_stack = end_context_stack - offset;
 	
@@ -14216,18 +14237,8 @@ uint64_t handle_system_call(uint64_t *context)
 			}
 		}
 		
-		//printf("\n=========\n");
-
-		//iterate_used_contexts();
-		//iterate_waiting_contexs();
-		//iterate_blocked_contexts();
-		//printf("\n\n");
-
-		//printf("get_main_thread %p \n",get_main_thread(context));
 		if(get_main_thread(context) == (uint64_t *)0){ // context == main thread
-			//printf("joined? %ld \n",get_joined(context));
 			if(get_joined(context)){ // main_thread para blocked
-				//printf("next thread %p \n",get_next_thread(context));
 				if(get_next_thread(context) != (uint64_t*)0){
 					block_context(context);	
 					set_state(context,BLOCKED);
@@ -14235,7 +14246,6 @@ uint64_t handle_system_call(uint64_t *context)
 				}
 			} else { // todas las threads se eliminan
 				while(get_next_thread(context) != (uint64_t *)0){
-					//print_context(context);
 					uint64_t *next_thread = get_next_thread(context);
 					delete_thread(next_thread);
 					delete_from_list(next_thread,&used_contexts);
@@ -14243,44 +14253,21 @@ uint64_t handle_system_call(uint64_t *context)
 				}	
 			}
 		} else if (get_main_thread(context) != (uint64_t *)0){
-			// si ya no hay mas threads joined se elimina el main thread
-			//printf("GET MAIN THREAD %p\n",get_main_thread(context));
-			//printf("CONTEXT %p \n",context);
-			//printf("N THREADS %ld \n", get_n_threads(get_main_thread(context)));
 			if(get_n_threads(get_main_thread(context)) == 1 && get_state(get_main_thread(context)) == BLOCKED){
-				//printf("SE REVIVE ESTADO BLOCKEADO \n");
 				use_block_context(get_main_thread(context)); //despierta a la thread main
 			}
 			delete_thread(context);
 			set_n_threads(get_main_thread(context),get_n_threads(get_main_thread(context))-1);
 			key = 0;
 		}
-
-		//iterate_used_contexts();
-		//iterate_waiting_contexs();
-		//iterate_blocked_contexts();
-		//printf("\n\n");
-		//printf("\n\n");
-		
 		if(get_state(context) == READY){
 			delete_from_list(context,&used_contexts);
 			implement_exit(context);
 		}
-
-		//iterate_used_contexts();
-		//iterate_waiting_contexs();
-		//iterate_blocked_contexts();
-		//printf("\n\n");
-		//printf("\n\n");
-
-    //printf("%s: unknown system call %lu\n", selfie_name, a7);
     set_exit_code(context, EXITCODE_UNKNOWNSYSCALL);
-
 		if((used_contexts == context && key == 1) || used_contexts == (uint64_t *)0) {
-			//printf("EXIT Returned \n");
   	  return EXIT;
 		} 
-		//printf("\n======\n");
   }
 
   return DONOTEXIT;
